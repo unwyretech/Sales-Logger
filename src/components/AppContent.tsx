@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoginScreen } from './LoginScreen';
 import { PendingApproval } from './PendingApproval';
 import { Dashboard } from './Dashboard';
+import { CookieConsent } from './CookieConsent';
 
 export function AppContent() {
   const { user, profile, loading } = useAuth();
@@ -29,5 +30,10 @@ export function AppContent() {
   }
 
   // Authenticated and approved - show dashboard
-  return <Dashboard />;
+  return (
+    <>
+      <Dashboard />
+      <CookieConsent />
+    </>
+  );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Check, X, Settings, Trash2, Plus, Edit, Save } from 'lucide-react';
+import { Users, Shield, Check, X, Settings, Trash2, Plus, Edit, Save, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDatabase } from '../hooks/useDatabase';
@@ -46,6 +46,8 @@ export function AdminPanel() {
   const [editingTeam, setEditingTeam] = useState<string | null>(null);
   const [newCampaign, setNewCampaign] = useState({ name: '', description: '', color: '#3b82f6' });
   const [newTeam, setNewTeam] = useState({ name: '', campaign_id: '', color: '#10b981' });
+  const [showAddPermission, setShowAddPermission] = useState(false);
+  const [newPermission, setNewPermission] = useState({ user_id: '', campaign_id: '' });
 
   useEffect(() => {
     fetchData();
@@ -114,6 +116,30 @@ export function AdminPanel() {
     }
   };
 
+  const deleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? This will permanently remove their account and all associated data.')) return;
+    
+    try {
+      // Delete user permissions first
+      await supabase.from('user_permissions').delete().eq('user_id', userId);
+      
+      // Delete user profile
+      await supabase.from('user_profiles').delete().eq('user_id', userId);
+      
+      // Delete from auth.users (this requires service role key in production)
+      const { error } = await supabase.auth.admin.deleteUser(userId);
+      if (error) {
+        console.warn('Could not delete auth user:', error);
+      }
+      
+      setUsers(prev => prev.filter(user => user.user_id !== userId));
+      fetchData(); // Refresh permissions data
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Error deleting user. They may need to be removed manually from the auth system.');
+    }
+  };
+
   const createUserPermission = async (userId: string, campaignId: string) => {
     try {
       const { error } = await supabase
@@ -147,6 +173,35 @@ export function AdminPanel() {
       ));
     } catch (error) {
       console.error('Error updating permission:', error);
+    }
+  };
+
+  const handleAddPermission = async () => {
+    if (!newPermission.user_id || !newPermission.campaign_id) return;
+    
+    try {
+      await createUserPermission(newPermission.user_id, newPermission.campaign_id);
+      setNewPermission({ user_id: '', campaign_id: '' });
+      setShowAddPermission(false);
+    } catch (error) {
+      console.error('Error creating permission:', error);
+    }
+  };
+
+  const deletePermission = async (permissionId: string) => {
+    if (!confirm('Are you sure you want to remove this permission?')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('user_permissions')
+        .delete()
+        .eq('id', permissionId);
+
+      if (error) throw error;
+      
+      setPermissions(prev => prev.filter(perm => perm.id !== permissionId));
+    } catch (error) {
+      console.error('Error deleting permission:', error);
     }
   };
 
@@ -329,6 +384,13 @@ export function AdminPanel() {
                             <X className="w-4 h-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => deleteUser(user.user_id)}
+                          className="text-red-600 hover:text-red-800"
+                          title="Delete User"
+                        >
+                          <UserX className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -343,19 +405,37 @@ export function AdminPanel() {
       {activeTab === 'permissions' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
           <div className="p-6 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900">Campaign Permissions</h3>
-            <p className="text-gray-600">Manage user access to campaigns</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Campaign Permissions</h3>
+                <p className="text-gray-600">Manage user access to campaigns</p>
+              </div>
+              <button
+                onClick={() => setShowAddPermission(true)}
+                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Permission</span>
+              </button>
+            </div>
           </div>
           
           <div className="p-6">
             <div className="space-y-4">
               {permissions.map((permission) => (
                 <div key={permission.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="font-medium text-gray-900">{permission.user_email}</div>
                       <div className="text-sm text-gray-600">{permission.campaign_name}</div>
                     </div>
+                    <button
+                      onClick={() => deletePermission(permission.id)}
+                      className="text-red-600 hover:text-red-800"
+                      title="Remove Permission"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                   
                   <div className="grid grid-cols-3 gap-4">
@@ -391,6 +471,14 @@ export function AdminPanel() {
                   </div>
                 </div>
               ))}
+              
+              {permissions.length === 0 && (
+                <div className="text-center py-8">
+                  <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No permissions configured yet</p>
+                  <p className="text-sm text-gray-500">Add permissions to grant users access to specific campaigns</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -676,6 +764,62 @@ export function AdminPanel() {
               </button>
               <button
                 onClick={() => setShowAddTeam(false)}
+                className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Permission Modal */}
+      {showAddPermission && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Campaign Permission</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">User</label>
+                <select
+                  value={newPermission.user_id}
+                  onChange={(e) => setNewPermission(prev => ({ ...prev, user_id: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select User</option>
+                  {users.filter(user => user.is_approved).map(user => (
+                    <option key={user.user_id} value={user.user_id}>
+                      {user.full_name || user.email} ({user.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Campaign</label>
+                <select
+                  value={newPermission.campaign_id}
+                  onChange={(e) => setNewPermission(prev => ({ ...prev, campaign_id: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Campaign</option>
+                  {campaigns.map(campaign => (
+                    <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleAddPermission}
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Add Permission
+              </button>
+              <button
+                onClick={() => setShowAddPermission(false)}
                 className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
               >
                 Cancel

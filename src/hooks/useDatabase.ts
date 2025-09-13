@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { cookieUtils } from '../utils/cookieUtils';
 import type { Database } from '../lib/supabase';
 
 type Tables = Database['public']['Tables'];
@@ -21,6 +22,10 @@ export function useDatabase() {
   // Auto-refresh every 10 minutes
   useEffect(() => {
     if (!profile?.is_approved) return;
+
+    // Check if auto-refresh is enabled in user preferences
+    const autoRefreshEnabled = cookieUtils.getUserPreference('autoRefresh', true);
+    if (!autoRefreshEnabled) return;
 
     const interval = setInterval(() => {
       fetchData();

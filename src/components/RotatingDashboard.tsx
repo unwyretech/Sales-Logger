@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipForward, Users, Phone, Clock, TrendingUp } from 'lucide-react';
+import { Play, Pause, SkipForward, Users, Phone, Clock, TrendingUp, Maximize, Minimize } from 'lucide-react';
 import { formatTime } from '../utils/dataUtils';
+import { cookieUtils } from '../utils/cookieUtils';
 import type { Database } from '../lib/supabase';
 
 type Tables = Database['public']['Tables'];
@@ -21,6 +22,8 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [timeLeft, setTimeLeft] = useState(10);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [interval, setInterval] = useState(() => cookieUtils.getDashboardSetting('rotatingInterval', 10));
 
   // Filter teams that have agents
   const teamsWithAgents = campaignTeams.filter(team => 
@@ -37,26 +40,51 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
       setTimeLeft(prev => {
         if (prev <= 1) {
           setCurrentTeamIndex(prev => (prev + 1) % teamsWithAgents.length);
-          return 10;
+          return interval;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [isPlaying, teamsWithAgents.length]);
+    return () => clearInterval(intervalId);
+  }, [isPlaying, teamsWithAgents.length, interval]);
 
   const nextTeam = () => {
     setCurrentTeamIndex(prev => (prev + 1) % teamsWithAgents.length);
-    setTimeLeft(10);
+    setTimeLeft(interval);
   };
 
   const togglePlayPause = () => {
     setIsPlaying(!isPlaying);
     if (!isPlaying) {
-      setTimeLeft(10);
+      setTimeLeft(interval);
     }
   };
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen) {
+      document.documentElement.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+    setIsFullscreen(!isFullscreen);
+  };
+
+  const updateInterval = (newInterval: number) => {
+    setInterval(newInterval);
+    setTimeLeft(newInterval);
+    cookieUtils.setDashboardSetting('rotatingInterval', newInterval);
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   if (teamsWithAgents.length === 0) {
     return (
@@ -95,10 +123,10 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
 
   const campaign = campaigns.find(c => c.id === currentTeam.campaign_id);
 
-  return (
+  const dashboardContent = (
     <div className="space-y-6">
       {/* Controls */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className={`bg-white rounded-xl shadow-sm p-4 border border-gray-100 ${isFullscreen ? 'fixed top-4 left-4 right-4 z-50' : ''}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button
@@ -115,6 +143,29 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
             >
               <SkipForward className="w-4 h-4" />
               <span>Next</span>
+            </button>
+            
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-600">Interval:</label>
+              <select
+                value={interval}
+                onChange={(e) => updateInterval(Number(e.target.value))}
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+              >
+                <option value={5}>5s</option>
+                <option value={10}>10s</option>
+                <option value={15}>15s</option>
+                <option value={30}>30s</option>
+                <option value={60}>1m</option>
+              </select>
+            </div>
+            
+            <button
+              onClick={toggleFullscreen}
+              className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
             </button>
           </div>
           
@@ -133,7 +184,7 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
       </div>
 
       {/* Team Dashboard */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${isFullscreen ? 'mt-20' : ''}`}>
         {/* Team Header */}
         <div 
           className="h-3"
@@ -218,4 +269,16 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
       </div>
     </div>
   );
+
+  if (isFullscreen) {
+    return (
+      <div className="fixed inset-0 bg-gray-50 z-40 overflow-y-auto">
+        <div className="min-h-screen p-4">
+          {dashboardContent}
+        </div>
+      </div>
+    );
+  }
+
+  return dashboardContent;
 }

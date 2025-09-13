@@ -10,14 +10,29 @@ import { AgentImporter } from './AgentImporter';
 import { CampaignDashboard } from './CampaignDashboard';
 import { AgentManagement } from './AgentManagement';
 import { RotatingDashboard } from './RotatingDashboard';
+import { UserSettings } from './UserSettings';
 import { useDatabase } from '../hooks/useDatabase';
+import { useCookies } from '../hooks/useCookies';
 
-type TabType = 'overview' | 'agents' | 'campaigns' | 'campaign-dashboard' | 'hourly' | 'rotating' | 'import' | 'agent-import' | 'agent-management' | 'admin';
+type TabType = 'overview' | 'agents' | 'campaigns' | 'campaign-dashboard' | 'hourly' | 'rotating' | 'import' | 'agent-import' | 'agent-management' | 'admin' | 'settings';
 
 export function Dashboard() {
   const { profile, signOut, isAdmin, isSuperAdmin } = useAuth();
+  const { getPreference, setPreference } = useCookies();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const { campaigns, campaignTeams, agents, callData, loading, error } = useDatabase();
+
+  // Load saved tab preference
+  useEffect(() => {
+    const savedTab = getPreference('activeTab', 'overview');
+    setActiveTab(savedTab);
+  }, [getPreference]);
+
+  // Save tab preference when changed
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    setPreference('activeTab', tab);
+  };
 
   const today = new Date().toISOString().split('T')[0];
   const todayData = callData.filter(call => call.date === today);
@@ -35,6 +50,7 @@ export function Dashboard() {
     { id: 'campaign-dashboard', label: 'Campaign Dashboard', icon: Calendar },
     { id: 'hourly', label: 'Hourly', icon: Calendar },
     { id: 'rotating', label: 'Rotating Dashboard', icon: BarChart3 },
+    { id: 'settings', label: 'Settings', icon: Settings },
     ...(isAdmin ? [
       { id: 'agent-management', label: 'Agent Management', icon: Settings },
       { id: 'import', label: 'Import/Export', icon: Upload },
@@ -86,7 +102,7 @@ export function Dashboard() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
+              onClick={() => handleTabChange(tab.id as TabType)}
               className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-all ${
                 activeTab === tab.id
                   ? 'bg-white text-blue-600 shadow-sm'
@@ -152,6 +168,7 @@ export function Dashboard() {
         {!loading && !error && activeTab === 'campaign-dashboard' && <CampaignDashboard campaigns={campaigns} campaignTeams={campaignTeams} agents={agents} callData={callData} date={today} />}
         {!loading && !error && activeTab === 'hourly' && <HourlyBreakdown campaigns={campaigns} campaignTeams={campaignTeams} agents={agents} callData={callData} detailed={true} />}
         {!loading && !error && activeTab === 'rotating' && <RotatingDashboard campaigns={campaigns} campaignTeams={campaignTeams} agents={agents} callData={callData} date={today} />}
+        {!loading && !error && activeTab === 'settings' && <UserSettings />}
         {!loading && !error && isAdmin && activeTab === 'agent-management' && <AgentManagement />}
         {!loading && !error && isAdmin && activeTab === 'import' && <ImportExport />}
         {!loading && !error && isAdmin && activeTab === 'agent-import' && <AgentImporter />}

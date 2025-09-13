@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { cookieUtils } from '../utils/cookieUtils';
 
 interface UserProfile {
   id: string;
@@ -106,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Clear app cookies on sign out
+    cookieUtils.clearAppCookies();
     await supabase.auth.signOut();
   };
 
