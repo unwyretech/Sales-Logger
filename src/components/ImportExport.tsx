@@ -370,6 +370,14 @@ export function ImportExport() {
           * Missing columns will be ignored<br />
           * Sales and Hour are optional (defaults: 0 sales, current hour)
         </p>
+        
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h4 className="font-medium text-blue-900 mb-2">Email Integration Available</h4>
+          <p className="text-sm text-blue-800">
+            You can also set up automatic import from Outlook emails. 
+            Check the "Outlook Integration" tab for automated processing of email attachments.
+          </p>
+        </div>
       </div>
     </div>
   );

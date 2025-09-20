@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart3, Users, Phone, TrendingUp, Calendar, Download, Upload, UserPlus, Shield, LogOut, Settings } from 'lucide-react';
+import { BarChart3, Users, Phone, TrendingUp, Calendar, Download, Upload, UserPlus, Shield, LogOut, Settings, Mail } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { AdminPanel } from './AdminPanel';
 import { AgentsList } from './AgentsList';
