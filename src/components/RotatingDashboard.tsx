@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipForward, Users, Phone, Clock, TrendingUp } from 'lucide-react';
+import { Play, Pause, SkipForward, Users, Phone, Clock, TrendingUp, Maximize, Minimize, Settings } from 'lucide-react';
 import { formatTime } from '../utils/dataUtils';
+import { useCookies } from '../hooks/useCookies';
 import type { Database } from '../lib/supabase';
 
 type Tables = Database['public']['Tables'];
@@ -20,7 +21,30 @@ interface RotatingDashboardProps {
 export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, date }: RotatingDashboardProps) {
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [rotationInterval, setRotationInterval] = useState(10);
   const [timeLeft, setTimeLeft] = useState(10);
+  const { getCookie, setCookie } = useCookies();
+
+  // Load settings from cookies
+  useEffect(() => {
+    const savedInterval = getCookie('rotating_dashboard_interval');
+    if (savedInterval) {
+      const interval = parseInt(savedInterval);
+      setRotationInterval(interval);
+      setTimeLeft(interval);
+    }
+  }, [getCookie]);
+
+  // Handle fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   // Filter teams that have agents
   const teamsWithAgents = campaignTeams.filter(team => 
@@ -37,27 +61,44 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
       setTimeLeft(prev => {
         if (prev <= 1) {
           setCurrentTeamIndex(prev => (prev + 1) % teamsWithAgents.length);
-          return 10;
+          return rotationInterval;
         }
         return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPlaying, teamsWithAgents.length]);
+  }, [isPlaying, teamsWithAgents.length, rotationInterval]);
 
   const nextTeam = () => {
     setCurrentTeamIndex(prev => (prev + 1) % teamsWithAgents.length);
-    setTimeLeft(10);
+    setTimeLeft(rotationInterval);
   };
 
   const togglePlayPause = () => {
     setIsPlaying(!isPlaying);
     if (!isPlaying) {
-      setTimeLeft(10);
+      setTimeLeft(rotationInterval);
     }
   };
 
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      console.error('Fullscreen toggle failed:', error);
+    }
+  };
+
+  const updateRotationInterval = (newInterval: number) => {
+    setRotationInterval(newInterval);
+    setTimeLeft(newInterval);
+    setCookie('rotating_dashboard_interval', newInterval.toString(), { expires: 30 });
+  };
   if (teamsWithAgents.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -96,7 +137,7 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
   const campaign = campaigns.find(c => c.id === currentTeam.campaign_id);
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isFullscreen ? 'fixed inset-0 bg-gray-50 z-50 p-6 overflow-y-auto' : ''}`}>
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
         <div className="flex items-center justify-between">
@@ -116,6 +157,29 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
               <SkipForward className="w-4 h-4" />
               <span>Next</span>
             </button>
+
+            <button
+              onClick={toggleFullscreen}
+              className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+            </button>
+
+            <div className="flex items-center space-x-2">
+              <Settings className="w-4 h-4 text-gray-400" />
+              <select
+                value={rotationInterval}
+                onChange={(e) => updateRotationInterval(parseInt(e.target.value))}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={5}>5 seconds</option>
+                <option value={10}>10 seconds</option>
+                <option value={15}>15 seconds</option>
+                <option value={30}>30 seconds</option>
+                <option value={60}>1 minute</option>
+              </select>
+            </div>
           </div>
           
           <div className="flex items-center space-x-4">
@@ -133,42 +197,44 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
       </div>
 
       {/* Team Dashboard */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${isFullscreen ? 'flex-1' : ''}`}>
         {/* Team Header */}
         <div 
           className="h-3"
           style={{ backgroundColor: currentTeam.color }}
         />
         
-        <div className="p-6">
+        <div className={`p-6 ${isFullscreen ? 'h-full flex flex-col' : ''}`}>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{currentTeam.name}</h2>
-              <p className="text-gray-600">{campaign?.name} • {teamAgents.length} agents • {new Date(date).toLocaleDateString()}</p>
+              <h2 className={`font-bold text-gray-900 ${isFullscreen ? 'text-4xl' : 'text-2xl'}`}>{currentTeam.name}</h2>
+              <p className={`text-gray-600 ${isFullscreen ? 'text-lg' : ''}`}>
+                {campaign?.name} • {teamAgents.length} agents • {new Date(date).toLocaleDateString()}
+              </p>
             </div>
             
             <div className="flex items-center space-x-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">
+                <div className={`font-bold text-blue-600 ${isFullscreen ? 'text-4xl' : 'text-2xl'}`}>
                   {agentPerformance.reduce((sum, agent) => sum + agent.totalCalls, 0)}
                 </div>
-                <div className="text-sm text-gray-600">Total Calls</div>
+                <div className={`text-gray-600 ${isFullscreen ? 'text-base' : 'text-sm'}`}>Total Calls</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
+                <div className={`font-bold text-green-600 ${isFullscreen ? 'text-4xl' : 'text-2xl'}`}>
                   {agentPerformance.reduce((sum, agent) => sum + agent.totalSales, 0)}
                 </div>
-                <div className="text-sm text-gray-600">Total Sales</div>
+                <div className={`text-gray-600 ${isFullscreen ? 'text-base' : 'text-sm'}`}>Total Sales</div>
               </div>
             </div>
           </div>
 
           {/* Agent Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className={`grid gap-4 ${isFullscreen ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 flex-1' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
             {agentPerformance.map(({ agent, totalCalls, totalCallTime, totalSales, averageCallTime }) => (
-              <div key={agent.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+              <div key={agent.id} className={`border border-gray-200 rounded-lg hover:shadow-md transition-shadow ${isFullscreen ? 'p-6' : 'p-4'}`}>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-gray-900 truncate">{agent.name}</h3>
+                  <h3 className={`font-semibold text-gray-900 truncate ${isFullscreen ? 'text-lg' : ''}`}>{agent.name}</h3>
                   <div className={`w-3 h-3 rounded-full ${agent.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
                 </div>
                 
@@ -176,29 +242,29 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-1">
                       <Phone className="w-3 h-3 text-blue-500" />
-                      <span className="text-xs text-gray-600">Calls</span>
+                      <span className={`text-gray-600 ${isFullscreen ? 'text-sm' : 'text-xs'}`}>Calls</span>
                     </div>
-                    <span className="text-sm font-bold text-blue-600">{totalCalls}</span>
+                    <span className={`font-bold text-blue-600 ${isFullscreen ? 'text-lg' : 'text-sm'}`}>{totalCalls}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-1">
                       <Clock className="w-3 h-3 text-purple-500" />
-                      <span className="text-xs text-gray-600">Time</span>
+                      <span className={`text-gray-600 ${isFullscreen ? 'text-sm' : 'text-xs'}`}>Time</span>
                     </div>
-                    <span className="text-sm font-bold text-purple-600">{formatTime(totalCallTime)}</span>
+                    <span className={`font-bold text-purple-600 ${isFullscreen ? 'text-lg' : 'text-sm'}`}>{formatTime(totalCallTime)}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-1">
                       <TrendingUp className="w-3 h-3 text-green-500" />
-                      <span className="text-xs text-gray-600">Sales</span>
+                      <span className={`text-gray-600 ${isFullscreen ? 'text-sm' : 'text-xs'}`}>Sales</span>
                     </div>
-                    <span className="text-sm font-bold text-green-600">{totalSales}</span>
+                    <span className={`font-bold text-green-600 ${isFullscreen ? 'text-lg' : 'text-sm'}`}>{totalSales}</span>
                   </div>
                   
                   <div className="pt-2 border-t border-gray-100">
-                    <div className="flex justify-between text-xs">
+                    <div className={`flex justify-between ${isFullscreen ? 'text-sm' : 'text-xs'}`}>
                       <span className="text-gray-500">Avg Call</span>
                       <span className="font-medium">{formatTime(averageCallTime)}</span>
                     </div>
@@ -209,7 +275,7 @@ export function RotatingDashboard({ campaigns, campaignTeams, agents, callData, 
           </div>
 
           {agentPerformance.length === 0 && (
-            <div className="text-center py-8">
+            <div className={`text-center ${isFullscreen ? 'py-16' : 'py-8'}`}>
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">No agents in this team</p>
             </div>
