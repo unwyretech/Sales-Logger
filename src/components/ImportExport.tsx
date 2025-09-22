@@ -8,8 +8,12 @@ type CallData = Database['public']['Tables']['call_data']['Insert'];
 
 export function ImportExport() {
   const { agents, campaignTeams, callData, upsertCallData } = useDatabase();
+  const { campaigns } = useDatabase();
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedHours, setSelectedHours] = useState<number[]>([]);
+  const [exportStartDate, setExportStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [exportEndDate, setExportEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedCampaign, setSelectedCampaign] = useState<string>('');
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -175,18 +179,38 @@ export function ImportExport() {
   };
 
   const exportDailyReport = () => {
-    const reportData = agents.map(agent => {
-      const agentCalls = callData.filter(call => call.agent_id === agent.id && call.date === today);
+    // Filter agents by campaign if selected
+    const filteredAgents = selectedCampaign 
+      ? agents.filter(agent => {
+          const team = campaignTeams.find(t => t.id === agent.campaign_team_id);
+          return team?.campaign_id === selectedCampaign;
+        })
+      : agents;
+
+    // Filter call data by date range and campaign
+    const filteredCallData = callData.filter(call => {
+      const dateMatch = call.date >= exportStartDate && call.date <= exportEndDate;
+      if (!selectedCampaign) return dateMatch;
+      
+      const agent = agents.find(a => a.id === call.agent_id);
+      const team = campaignTeams.find(t => t.id === agent?.campaign_team_id);
+      return dateMatch && team?.campaign_id === selectedCampaign;
+    });
+
+    const reportData = filteredAgents.map(agent => {
+      const agentCalls = filteredCallData.filter(call => call.agent_id === agent.id);
       const totalCalls = agentCalls.reduce((sum, call) => sum + call.calls_made, 0);
       const totalCallTime = agentCalls.reduce((sum, call) => sum + call.total_call_time, 0);
       const totalSales = agentCalls.reduce((sum, call) => sum + call.sales_made, 0);
       const team = campaignTeams.find(t => t.id === agent.campaign_team_id);
+      const campaign = campaigns.find(c => c.id === team?.campaign_id);
       
       return {
         'Agent ID': agent.id,
         'Agent Name': agent.name,
+        'Campaign': campaign?.name || 'No Campaign',
         'Team': team?.name || 'No Team',
-        'Date': today,
+        'Date Range': `${exportStartDate} to ${exportEndDate}`,
         'Total Calls': totalCalls,
         'Total Call Time (minutes)': totalCallTime,
         'Total Sales': totalSales,
@@ -194,12 +218,28 @@ export function ImportExport() {
       };
     });
 
-    exportToCSV(reportData, `sales-report-${today}.csv`);
+    const campaignName = selectedCampaign 
+      ? campaigns.find(c => c.id === selectedCampaign)?.name || 'campaign'
+      : 'all-campaigns';
+    
+    exportToCSV(reportData, `sales-report-${campaignName}-${exportStartDate}-to-${exportEndDate}.csv`);
   };
 
   const exportRawData = () => {
-    const todayData = callData.filter(call => call.date === today);
-    exportToCSV(todayData, `sales-data-${today}.csv`);
+    const filteredData = callData.filter(call => {
+      const dateMatch = call.date >= exportStartDate && call.date <= exportEndDate;
+      if (!selectedCampaign) return dateMatch;
+      
+      const agent = agents.find(a => a.id === call.agent_id);
+      const team = campaignTeams.find(t => t.id === agent?.campaign_team_id);
+      return dateMatch && team?.campaign_id === selectedCampaign;
+    });
+    
+    const campaignName = selectedCampaign 
+      ? campaigns.find(c => c.id === selectedCampaign)?.name || 'campaign'
+      : 'all-campaigns';
+    
+    exportToCSV(filteredData, `sales-data-${campaignName}-${exportStartDate}-to-${exportEndDate}.csv`);
   };
 
   const downloadSampleImportCSV = () => {
@@ -330,6 +370,44 @@ export function ImportExport() {
           Export Data
         </h3>
 
+        {/* Export Filters */}
+        <div className="mb-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Campaign</label>
+              <select
+                value={selectedCampaign}
+                onChange={(e) => setSelectedCampaign(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">All Campaigns</option>
+                {campaigns.map(campaign => (
+                  <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <input
+                type="date"
+                value={exportStartDate}
+                onChange={(e) => setExportStartDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <input
+                type="date"
+                value={exportEndDate}
+                onChange={(e) => setExportEndDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={exportDailyReport}
@@ -349,8 +427,9 @@ export function ImportExport() {
         </div>
 
         <div className="mt-4 text-sm text-gray-600">
-          <p><strong>Daily Report:</strong> Includes agent summaries, averages, and totals</p>
-          <p><strong>Raw Data:</strong> Exports all hourly call data for today</p>
+          <p><strong>Daily Report:</strong> Includes agent summaries, averages, and totals for selected date range and campaign</p>
+          <p><strong>Raw Data:</strong> Exports all hourly call data for selected filters</p>
+          <p><strong>Current Selection:</strong> {selectedCampaign ? campaigns.find(c => c.id === selectedCampaign)?.name : 'All Campaigns'} from {exportStartDate} to {exportEndDate}</p>
         </div>
       </div>
 

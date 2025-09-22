@@ -11,8 +11,9 @@ import { CampaignDashboard } from './CampaignDashboard';
 import { AgentManagement } from './AgentManagement';
 import { RotatingDashboard } from './RotatingDashboard';
 import { useDatabase } from '../hooks/useDatabase';
+import { OutlookIntegration } from './OutlookIntegration';
 
-type TabType = 'overview' | 'agents' | 'campaigns' | 'campaign-dashboard' | 'hourly' | 'rotating' | 'import' | 'agent-import' | 'agent-management' | 'admin';
+type TabType = 'overview' | 'agents' | 'campaigns' | 'campaign-dashboard' | 'hourly' | 'rotating' | 'import' | 'agent-import' | 'agent-management' | 'outlook' | 'admin';
 
 export function Dashboard() {
   const { profile, signOut, isAdmin, isSuperAdmin } = useAuth();
@@ -39,6 +40,7 @@ export function Dashboard() {
       { id: 'agent-management', label: 'Agent Management', icon: Settings },
       { id: 'import', label: 'Import/Export', icon: Upload },
       { id: 'agent-import', label: 'Import Agents', icon: UserPlus },
+      { id: 'outlook', label: 'Outlook Integration', icon: Mail },
     ] : []),
     ...(isSuperAdmin ? [
       { id: 'admin', label: 'Admin Panel', icon: Shield },
@@ -155,6 +157,7 @@ export function Dashboard() {
         {!loading && !error && isAdmin && activeTab === 'agent-management' && <AgentManagement />}
         {!loading && !error && isAdmin && activeTab === 'import' && <ImportExport />}
         {!loading && !error && isAdmin && activeTab === 'agent-import' && <AgentImporter />}
+        {!loading && !error && isAdmin && activeTab === 'outlook' && <OutlookIntegration />}
         {!loading && !error && isSuperAdmin && activeTab === 'admin' && <AdminPanel />}
       </div>
     </div>

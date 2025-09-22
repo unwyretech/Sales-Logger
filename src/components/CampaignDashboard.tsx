@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Users, Phone, Clock, TrendingUp, Calendar, Filter } from 'lucide-react';
+import { Users, Phone, Clock, TrendingUp, Calendar, Filter, Edit, Save, X } from 'lucide-react';
 import { formatTime, formatHour } from '../utils/dataUtils';
 import { CampaignTeamView } from './CampaignTeamView';
+import { useAuth } from '../contexts/AuthContext';
+import { useDatabase } from '../hooks/useDatabase';
 import type { Database } from '../lib/supabase';
 
 type Tables = Database['public']['Tables'];
@@ -22,6 +24,10 @@ export function CampaignDashboard({ campaigns, campaignTeams, agents, callData, 
   const [selectedDate, setSelectedDate] = useState(date);
   const [sortBy, setSortBy] = useState<'name' | 'calls' | 'sales' | 'time'>('name');
   const [selectedTeam, setSelectedTeam] = useState<CampaignTeam | null>(null);
+  const [editingSales, setEditingSales] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<number>(0);
+  const { isAdmin } = useAuth();
+  const { upsertCallData } = useDatabase();
 
   // If a team is selected, show the detailed agent view
   if (selectedTeam) {
@@ -222,9 +228,66 @@ export function CampaignDashboard({ campaigns, campaignTeams, agents, callData, 
                     <td className="px-6 py-4 text-center bg-green-50">
                       <div className="flex items-center justify-center space-x-1">
                         <TrendingUp className="w-4 h-4 text-green-500" />
-                        <span className="text-lg font-bold text-green-600">
-                          {teamData.totalSales}
-                        </span>
+                        {isAdmin ? (
+                          editingSales === teamData.team.id ? (
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="number"
+                                value={editingValue}
+                                onChange={(e) => setEditingValue(parseInt(e.target.value) || 0)}
+                                className="w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm"
+                                min="0"
+                              />
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    // Update all call data records for this team and date
+                                    const teamCallsToUpdate = filteredCallData
+                                      .filter(call => {
+                                        const agent = agents.find(a => a.id === call.agent_id);
+                                        return agent?.campaign_team_id === teamData.team.id;
+                                      })
+                                      .map(call => ({
+                                        ...call,
+                                        sales_made: Math.floor(editingValue / teamData.hourlyData.filter(h => h.calls > 0).length) || 0
+                                      }));
+                                    
+                                    if (teamCallsToUpdate.length > 0) {
+                                      await upsertCallData(teamCallsToUpdate);
+                                    }
+                                    setEditingSales(null);
+                                  } catch (error) {
+                                    console.error('Error updating sales:', error);
+                                  }
+                                }}
+                                className="text-green-600 hover:text-green-800"
+                              >
+                                <Save className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => setEditingSales(null)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingSales(teamData.team.id);
+                                setEditingValue(teamData.totalSales);
+                              }}
+                              className="text-lg font-bold text-green-600 hover:bg-green-100 px-2 py-1 rounded transition-colors"
+                            >
+                              {teamData.totalSales}
+                              <Edit className="w-3 h-3 inline ml-1" />
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-lg font-bold text-green-600">
+                            {teamData.totalSales}
+                          </span>
+                        )}
                       </div>
                     </td>
 

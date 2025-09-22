@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Clock, Phone, TrendingUp, Target } from 'lucide-react';
+import { ArrowLeft, Clock, Phone, TrendingUp, Target, Edit, Save, X } from 'lucide-react';
 import { formatTime } from '../utils/dataUtils';
+import { useAuth } from '../contexts/AuthContext';
+import { useDatabase } from '../hooks/useDatabase';
 import type { Database } from '../lib/supabase';
 
 type Tables = Database['public']['Tables'];
@@ -18,6 +20,10 @@ interface CampaignTeamViewProps {
 
 export function CampaignTeamView({ team, agents, callData, date, onBack }: CampaignTeamViewProps) {
   const [sortBy, setSortBy] = useState<'name' | 'calls' | 'sales' | 'time'>('name');
+  const [editingSales, setEditingSales] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<number>(0);
+  const { isAdmin } = useAuth();
+  const { upsertCallData } = useDatabase();
 
   // Filter agents for this team
   const teamAgents = agents.filter(agent => agent.campaign_team_id === team.id);
@@ -265,9 +271,63 @@ export function CampaignTeamView({ team, agents, callData, date, onBack }: Campa
 
                     {/* Total Sales */}
                     <td className="px-4 py-3 text-center">
-                      <div className={`inline-block px-3 py-1 rounded text-sm font-bold ${getSalesColor(agentData.totalSales, sortedAgents.map(a => a.totalSales))}`}>
-                        {agentData.totalSales}
-                      </div>
+                      {isAdmin ? (
+                        editingSales === agentData.agent.id ? (
+                          <div className="flex items-center justify-center space-x-2">
+                            <input
+                              type="number"
+                              value={editingValue}
+                              onChange={(e) => setEditingValue(parseInt(e.target.value) || 0)}
+                              className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm"
+                              min="0"
+                            />
+                            <button
+                              onClick={async () => {
+                                try {
+                                  // Update all call data records for this agent and date
+                                  const agentCallsToUpdate = teamCallData
+                                    .filter(call => call.agent_id === agentData.agent.id)
+                                    .map(call => ({
+                                      ...call,
+                                      sales_made: Math.floor(editingValue / agentData.hourlyData.filter(h => h.calls > 0).length) || 0
+                                    }));
+                                  
+                                  if (agentCallsToUpdate.length > 0) {
+                                    await upsertCallData(agentCallsToUpdate);
+                                  }
+                                  setEditingSales(null);
+                                } catch (error) {
+                                  console.error('Error updating sales:', error);
+                                }
+                              }}
+                              className="text-green-600 hover:text-green-800"
+                            >
+                              <Save className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setEditingSales(null)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditingSales(agentData.agent.id);
+                              setEditingValue(agentData.totalSales);
+                            }}
+                            className={`inline-block px-3 py-1 rounded text-sm font-bold hover:ring-2 hover:ring-blue-500 transition-all ${getSalesColor(agentData.totalSales, sortedAgents.map(a => a.totalSales))}`}
+                          >
+                            {agentData.totalSales}
+                            <Edit className="w-3 h-3 inline ml-1" />
+                          </button>
+                        )
+                      ) : (
+                        <div className={`inline-block px-3 py-1 rounded text-sm font-bold ${getSalesColor(agentData.totalSales, sortedAgents.map(a => a.totalSales))}`}>
+                          {agentData.totalSales}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -280,6 +340,13 @@ export function CampaignTeamView({ team, agents, callData, date, onBack }: Campa
       {/* Legend */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Legend</h3>
+        {isAdmin && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Admin Feature:</strong> Click on any sales number to edit it. Changes will be distributed across the agent's hourly records.
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <h4 className="font-medium text-gray-700 mb-2">Call Time (40min target per hour)</h4>
